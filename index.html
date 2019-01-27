@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>Raspbian安裝Docker CE並運行Home Assistant</title>
+  <!-- Google Code Prettify -->
+  <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js?lang=css&amp;skin=sons-of-obsidian"></script>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/prism.js"></script>
+  <style>
+    @media print {
+
+      code[class*="language-"],
+      pre[class*="language-"] {
+        overflow: visible;
+        word-wrap: break-word !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="markdown-body">
+    <h1 id="toc_0">Raspbian安裝Docker CE並運行Home Assistant</h1>
+
+    <h2 id="toc_1">簡易安裝說明</h2>
+
+    <ul>
+      <li>先將要使用的系統燒錄至SD卡安裝啟動樹莓派後, 再繼續往下操作.</li>
+      <li>必須安裝的相依套件有: <code>docker-ce</code> <code>bash</code> <code>jq</code> <code>curl</code> <code>avahi-daemon</code>
+        <code>dbus</code>.</li>
+      <li><code>docker-ce</code>安裝步驟較麻煩, 稍後會有詳細說明.</li>
+      <li>其餘則是以ssh pi@ip_address, 連線到樹莓派上依下列指令輸入:</li>
+    </ul>
+
+    <pre class="prettyprint">sudo apt-get update
+sudo apt-get upgrade -y
+# 但可能部分套件原本就已經有安裝了，不影響
+sudo apt-get install -y bash jq curl avahi-daemon dbus
+</pre>
+
+    <h3 id="toc_2">安裝Docker CE</h3>
+
+    <p>Docker CE for Debian 安裝指南: <a href="https://docs.docker.com/install/linux/docker-ce/debian/">參考連結</a></p>
+
+    <p>依下列步驟，從官方來源安裝</p>
+
+    <pre class="prettyprint"># 新增 Docker 官方 GPG key:
+curl -fsSL https://download.docker.com/linux/raspbian/gpg | sudo apt-key add -
+
+# 使用以下指令來新增 穩定版來源
+echo &quot;deb [arch=armhf] https://download.docker.com/linux/raspbian stretch stable&quot; | sudo tee /etc/apt/sources.list.d/docker.list
+
+# 更新來源並安裝
+sudo apt-get update
+sudo apt-get install docker-ce
+</pre>
+
+    <p>將使用者 <code>pi</code> 新增至docker群組中並登出</p>
+
+    <pre class="prettyprint">sudo usermod -aG docker pi &amp;&amp; logout
+</pre>
+
+    <blockquote>
+      <p>安裝完 <code>Docker</code> , 則可以開始準備安裝Hassio<br />
+        在上一步登出後, 再重新ssh回到樹莓派</p>
+    </blockquote>
+
+    <h2 id="toc_3">下載Hassio執行腳本前必須</h2>
+
+    <p>先手動自行從Docker Hub拉鏡像檔下來，後續hassio-supervisor在運行過程會比較輕鬆.</p>
+
+    <pre class="prettyprint">docker pull homeassistant/raspberrypi3-homeassistant
+</pre>
+
+    <blockquote>
+      <p>下述指令需以 <code>root</code>身份執行, 因此執行命令 <code>sudo su</code> 切換至 <code>root</code> 後即可開始下載腳本<br />
+        等他跑一段時間後，訊息中有寫到 <code>Run Hass.io</code> 算是告一段落.</p>
+    </blockquote>
+
+    <pre class="prettyprint">curl -sL https://raw.githubusercontent.com/home-assistant/hassio-build/master/install/hassio_install | bash -s -- -m  raspberrypi3
+</pre>
+
+    <p>因為透過腳本方式運作，其中是有包含了新增一個hassio-supervisor.service的服務在 <code>/etc/systemd/system/</code> 中,
+      針對這一類系統服務的控制行為指令(docker的也順便), 列出以下幾項比較常使用到的</p>
+
+    <h3 id="toc_4">系統服務 <code>systemctl</code> 指令</h3>
+
+    <pre class="prettyprint"># 查看狀態
+sudo systemctl status hassio-supervisor
+
+# 停止服務
+sudo systemctl stop hassio-supervisor
+
+# 重啟服務
+sudo systemctl restart hassio-supervisor
+</pre>
+
+    <h3 id="toc_5">Docker指令</h3>
+
+    <p>查看容器啟用情況</p>
+
+    <pre class="prettyprint">
+# 查詢正在運作的容器
+docker ps
+
+# 查詢所有容器 (包含未啟用)
+docker ps -a
+</pre>
+
+    <p>其他常用指令</p>
+
+    <pre class="prettyprint">docker [Options] [container_name/id]
+
+Options:
+stop
+restart
+kill
+
+# 詳情查詢使用
+dock --help
+
+# 查詢鏡像檔
+docker images
+
+# 移除鏡像檔
+docker rmi Image_Id
+
+# 查看log
+docker logs -f Conatiner_Name
+</pre>
+
+    <h2 id="toc_6">其他</h2>
+
+    <p>hassio路徑: <code>/use/share/hassio</code><br />
+      homeassistant路徑： <code>/use/share/hassio/homeassistant</code><br />
+      hassio-supervisor路徑: <code>/etc/systemd/system/hassio-supervisor</code></p>
+
+    <p>後續有想到再補上</p>
+
+    <hr />
+
+    <h2 id="toc_7">安裝Docker Compose</h2>
+
+    <p>有了 <a href="https://docs.docker.com/compose/">Docker Compose</a> 之後, 安裝於Docker containers中變得相當容易,
+      首次安裝需透過Python與一些套件來完成安裝它:</p>
+
+    <pre class="prettyprint">sudo apt-get -y install python-setuptools &amp;&amp; sudo easy_install pip  &amp;&amp; sudo pip install docker-compose
+</pre>
+
+    <p>在家目錄使用者內新增一個所需的資料夾, 依照以下指示建立新資料夾並且進到該資料夾中.</p>
+
+    <pre class="prettyprint">mkdir /home/pi/NAME_IT
+cd /home/pi/NAME_IT
+</pre>
+
+    <p>然後使用 <code>nano</code> 編寫並建立名為 <code>docker-compose.yml</code> 的檔案.</p>
+
+    <pre class="prettyprint">nano docker-compose.yml
+</pre>
+
+    <p>內容範例以Portainer作為示範:</p>
+
+    <pre class="prettyprint">
+version: 2
+
+services:
+  portainer:
+    image: portainer/portainer
+    command: -H unix:///var/run/docker.sock
+    restart: always
+    ports:
+      - 9000:9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
+volumes:
+  portainer_data:
+</pre>
+
+    <p>使用 <code>CTRL+X</code> 儲存並且關閉檔案.</p>
+
+    <p>在背景啟動Container容器, 執行以下指令:</p>
+
+    <pre class="prettyprint">docker-compose up -d
+</pre>
+
+    <p>查看log有無異常, Portainer是否成功運作中:</p>
+
+    <pre class="prettyprint">docker-compose logs -f container_name (or container_ID)
+</pre>
+
+  </div>
+</body>
+
+</html>
